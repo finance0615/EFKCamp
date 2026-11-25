@@ -127,6 +127,7 @@ button:focus-visible,.opt:focus-visible{outline:3px solid #7ab64899;outline-offs
 .itemlist{margin:10px 0 0;padding:0;list-style:none}
 .itemlist li{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:15px}
 .itemlist li span:last-child{white-space:nowrap;font-weight:600}
+.itemlist li.cx>span:first-child>b,.itemlist li.cx>span:last-child{text-decoration:line-through;color:var(--mute)}
 @media(max-width:600px){.line{grid-template-columns:minmax(0,1fr) 44px;grid-template-areas:"d x" "c c"}.line .fd{grid-area:d}.line .fc{grid-area:c}.line .x{grid-area:x}}
 </style>
 </head>
@@ -159,7 +160,21 @@ const vKey=p=>p.area+'|'+p.venue, dKey=p=>p.start+'|'+p.end+'|'+p.dateLabel;
 const kidNames=r=>r.kids.map(k=>k.kid).join(', ');
 const toast=m=>{document.querySelectorAll('.toast').forEach(x=>x.remove());const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),3200)};
 const normWa=v=>{let d=String(v||'').replace(/\D/g,'');if(d.startsWith('62'))d=d.slice(2);if(d.startsWith('0'))d=d.slice(1);return d};
-const bundleDisc=n=>n>=4?200000:n===3?150000:n===2?75000:0;
+function bundleDiscounts(items){
+  /* Diskon bundling EFK HQ (hanya kelas bertanda bundling), dihitung per minggu:
+     - Minggu 5 hari (14–18): 2/3/4+ kelas → potongan 75.000 / 150.000 / 200.000 per kelas (= 3.150.000 / 4.500.000 / 1.450.000 per kelas)
+     - Minggu 4 hari (21–24): 2/3/4+ kelas → 5% / 10% / 13% per kelas, harga dibulatkan ke bawah ke ribuan
+     - Kelas sendirian di minggunya (ada kelas EFK HQ lain di billing): 5% — jika semua minggu hanya 1 kelas, hanya yang termurah */
+  const disc=items.map(()=>0),fl=x=>Math.floor(x/1000)*1000,days=i=>Math.round((Date.parse(i.end||i.start)-Date.parse(i.start))/864e5)+1;
+  const b=items.map((it,idx)=>({it,idx})).filter(x=>x.it.bundle&&Number(x.it.gross)>0&&!x.it.cancelled);
+  const g={};b.forEach(x=>{const k=x.it.start+'|'+(x.it.end||x.it.start);(g[k]=g[k]||[]).push(x)});
+  const groups=Object.values(g),singles=groups.filter(a=>a.length===1).map(a=>a[0]);
+  groups.filter(a=>a.length>=2).forEach(a=>{const n=a.length;a.forEach(x=>{const p=Number(x.it.gross);
+    if(days(x.it)>=5)disc[x.idx]=Math.min(p,n>=4?200000:n===3?150000:75000);
+    else disc[x.idx]=p-fl(p*(100-(n>=4?13:n===3?10:5))/100)})});
+  if(b.length>=2&&singles.length){const pick=singles.length===groups.length?[singles.reduce((m,x)=>Number(x.it.gross)<Number(m.it.gross)?x:m)]:singles;
+    pick.forEach(x=>{const p=Number(x.it.gross);disc[x.idx]=p-fl(p*0.95)})}
+  return disc}
 const mins=t=>{const m=/(\d{1,2})[.:](\d{2})/.exec(t||'');return m?(+m[1])*60+(+m[2]):null};
 const clash=(a,b)=>{if(!(a.start<=b.end&&b.start<=a.end))return false;const pa=String(a.jam).split(/[–-]/),pb=String(b.jam).split(/[–-]/);
   const a1=mins(pa[0]),a2=mins(pa[1]),b1=mins(pb[0]),b2=mins(pb[1]);if([a1,a2,b1,b2].includes(null))return a.jam===b.jam;return a1<b2&&b1<a2};
@@ -181,7 +196,7 @@ function remember(reg){
 
 /* hitung total sesuai aturan bundling (server tetap menghitung ulang) */
 function quote(){const items=[];S.d.kids.forEach((k,ki)=>k.lines.forEach(l=>{const p=P(l.pkg);if(p&&can(p))items.push({ki,kid:k.kid||'Anak '+(ki+1),p,disc:0})}));
-  const n=items.filter(i=>i.p.bundle).length,d=bundleDisc(n);items.forEach(i=>i.disc=i.p.bundle&&i.p.price>0?Math.min(d,i.p.price):0);
+  const d=bundleDiscounts(items.map(i=>({gross:i.p.price,start:i.p.start,end:i.p.end,bundle:i.p.bundle})));items.forEach((i,k)=>i.disc=d[k]);const n=items.filter(i=>i.p.bundle).length;
   const sub=items.reduce((s,i)=>s+(i.p.price||0),0),disc=items.reduce((s,i)=>s+i.disc,0);return{items,sub,disc,total:sub-disc,n}}
 
 function render(){app.innerHTML=S.step===1?vForm():S.step===2?vPay():vDone()}
@@ -209,7 +224,6 @@ function vForm(){
     <div class="field"><label for="venue">Lokasi</label>
      <select id="venue"><option value="">Pilih lokasi…</option>${areas.map(a=>`<optgroup label="${esc(a)}">${venues.filter(v=>v.area===a).map(v=>`<option value="${esc(vKey(v))}" ${vKey(v)===d.venue?'selected':''}>${esc(v.venue)}</option>`).join('')}</optgroup>`).join('')}</select></div>
     ${school?`<p class="note">Kelas di ${esc(v0.venue)} didaftarkan melalui sekolah. Setelah Anda kirim, data diteruskan ke ${esc(v0.venue)} dan pihak sekolah akan menghubungi Anda untuk pembayaran.</p>`:''}
-    ${bundle?`<div class="info"><b>Diskon bundling ${esc(v0.venue)}</b>Berlaku untuk total kelas dalam 1 pendaftaran (boleh beberapa anak):<table><tr><td>1 kelas</td><td>Rp 1.650.000</td></tr><tr><td>2 kelas</td><td>Rp 3.150.000</td></tr><tr><td>3 kelas</td><td>Rp 4.500.000</td></tr><tr><td>4 kelas atau lebih</td><td>Rp 1.450.000 / kelas</td></tr></table></div>`:''}
    </section>
    <section class="sec"><div class="sec-h"><span class="num">2</span><h2>Data orang tua</h2></div>
     <div class="grid2">
@@ -237,7 +251,6 @@ function vForm(){
    ${q.sub>0?`<div class="total" style="display:block"><div class="rows"><span>Subtotal (${q.items.length} kelas)</span><span>${rp(q.sub)}</span></div>
      ${q.disc?`<div class="rows disc"><span>Diskon bundling</span><span>− ${rp(q.disc)}</span></div>`:''}
      <div class="rows" style="margin-top:6px;align-items:baseline"><span>Total</span><b>${rp(q.total)}</b></div></div>`:''}
-   ${bundle&&q.n===1?`<p class="hint">Tambah 1 kelas lagi di ${esc(v0.venue)} untuk mendapat diskon bundling.</p>`:''}
    ${school?`<p class="note">Pembayaran langsung ke sekolah. Pihak sekolah akan menghubungi Anda.</p>`:''}`
    :`<p class="hint">Pilih lokasi lalu kelas untuk setiap anak untuk melihat ringkasan dan total biaya.</p>`}
    <p class="err" id="e1" role="alert">${esc(S.err)}</p>
@@ -258,7 +271,9 @@ function vForm(){
 
 function steps(school){const n=school?['Data & kelas','Selesai']:['Data & kelas','Pembayaran','Selesai'];const cur=school?(S.step===1?1:2):S.step;
   return `<div class="steps">${n.map((t,i)=>`<span class="${i+1===cur?'on':i+1<cur?'done':''}">${i+1}. ${t}</span>`).join('')}</div>`}
-function itemsHtml(r){return `<ul class="itemlist">${r.items.map(i=>`<li><span><b>${esc(i.kid)}</b> — ${esc(i.tema)}<br><small class="hint">${esc(i.venue)} · ${esc(lrange(i))} · ${esc(i.jam)}</small></span><span>${i.price>0?rp(i.price):'—'}</span></li>`).join('')}</ul>`}
+function itemsHtml(r){return `<ul class="itemlist">${r.items.map(i=>`<li${i.cancelled?' class="cx"':''}><span><b>${esc(i.kid)}</b> — ${esc(i.tema)}<br><small class="hint">${esc(i.venue)} · ${esc(lrange(i))} · ${esc(i.jam)}</small>${i.cancelled?`<br><span class="tag">Dibatalkan: ${esc(i.cancelled)}</span>`:''}</span><span>${i.price>0?rp(i.price):'—'}</span></li>`).join('')}</ul>`}
+const due=r=>(r.total||0)-(r.cancelAmt||0);
+function refundNote(r){return r.refundStatus==='open'?`<p class="note">Kelas yang dibatalkan akan di-refund sebesar <b>${rp(r.refund)}</b>. Tim EFK akan menghubungi Anda melalui WhatsApp untuk data rekening.</p>`:r.refundStatus==='done'?`<p class="note g">Refund ${rp(r.refund)} sudah ditransfer.</p>`:''}
 
 function vPay(){
   const r=S.reg,b=r.bank;
@@ -269,14 +284,16 @@ function vPay(){
   <p>Anda akan membayar paket Winter Camp untuk <b>${esc(kidNames(r))}</b> (${r.items.length} kelas):</p>
   ${itemsHtml(r)}
   ${r.discount?`<div class="rows" style="margin-top:10px"><span>Subtotal</span><span>${rp(r.subtotal)}</span></div><div class="rows disc"><span>Diskon bundling</span><span>− ${rp(r.discount)}</span></div>`:''}
-  <div class="tot"><span>Total</span><span>${rp(r.total)}</span></div>
+  ${r.cancelAmt?`<div class="rows"><span>Total awal</span><span>${rp(r.total)}</span></div><div class="rows"><span>Kelas dibatalkan</span><span>− ${rp(r.cancelAmt)}</span></div>`:''}
+  <div class="tot"><span>${r.cancelAmt?'Harus dibayar':'Total'}</span><span>${rp(r.status==='paid'||r.status==='pending'?r.total:due(r))}</span></div>
   <p>Silakan melakukan pembayaran ke</p>
   <div class="bank"><div><div style="font-weight:700">${esc(b.nama)}</div><div class="no">${esc(b.no)}</div><div>a.n. ${esc(b.an)}</div></div><button class="btn ghost sm" data-a="copyno">Salin no. rekening</button></div>
   </div>
+  ${refundNote(r)}
   ${r.status==='paid'?`<p class="note g">Pembayaran ini sudah terverifikasi lunas. Terima kasih!</p>`:
    r.status==='pending'?`<p class="note">Bukti pembayaran sudah diterima dan sedang dicek tim Finance. Anda bisa mengirim ulang jika perlu.</p>`:
    r.status==='rejected'?`<p class="note">Bukti sebelumnya ditolak${r.note?': '+esc(r.note):''}. Silakan upload ulang.</p>`:''}
-  ${r.status==='paid'?'':`<h3 style="margin-top:24px">Jika Anda sudah melakukan pembayaran, silakan upload bukti pembayaran di sini</h3>
+  ${r.status==='paid'||due(r)<=0?'':`<h3 style="margin-top:24px">Jika Anda sudah melakukan pembayaran, silakan upload bukti pembayaran di sini</h3>
   <label class="drop">${S.img?'Ganti gambar':'Pilih foto / screenshot bukti transfer'}<input type="file" id="proof" accept="image/*"></label>
   <p class="hint" style="margin-top:6px">Gambar otomatis dikompres sebelum dikirim.</p>
   ${S.img?`<img class="prev" src="${S.img}" alt="Pratinjau bukti pembayaran">`:''}
@@ -288,7 +305,7 @@ function vSchool(r){
   const paid=r.status==='paid',fwd=r.status==='forwarded';
   return `<div class="card single ok">${steps(true)}<div class="big">✓</div>
   <h2>${paid?'Pendaftaran sudah lunas':'Pendaftaran terkirim'}</h2><p>Kode pendaftaran: <b>${esc(r.id)}</b></p>
-  <div class="receipt" style="text-align:left;margin-top:16px">${itemsHtml(r)}</div>
+  <div class="receipt" style="text-align:left;margin-top:16px">${itemsHtml(r)}</div>${refundNote(r)}
   <p class="note ${paid?'g':''}" style="text-align:left">${paid?'Pembayaran Anda sudah dikonfirmasi. Sampai jumpa di Winter Camp!':
    `Pendaftaran untuk kelas ini ditangani langsung oleh <b>${esc(r.venue)}</b>. ${fwd?'Data Anda sudah kami teruskan ke sekolah.':'Tim EFK akan meneruskan data Anda ke sekolah.'} Pihak sekolah akan menghubungi Anda melalui WhatsApp untuk informasi pembayaran.`}</p>
   <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:18px"><button class="btn" data-a="new">Daftarkan anak lain</button></div></div>`;
