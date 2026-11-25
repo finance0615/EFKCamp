@@ -108,12 +108,32 @@ button:focus-visible,.opt:focus-visible{outline:3px solid #7ab64899;outline-offs
 @media(max-width:600px){.grid2{grid-template-columns:minmax(0,1fr)}.logo{width:64px;height:64px;border-radius:16px}.logo img{width:58px;height:58px}.hero p{font-size:15px}
  .opt{grid-template-columns:22px minmax(0,1fr)}.opt .pr{grid-column:2;text-align:left}}
 @media(prefers-reduced-motion:no-preference){.card{animation:up .25s ease-out}@keyframes up{from{opacity:0;transform:translateY(6px)}}}
+.line{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.7fr) 44px;gap:10px;align-items:end;margin-top:10px}
+.line .x{width:44px;height:50px;border-radius:12px;border:1.5px solid var(--line);background:#fff;color:var(--mute);font-size:22px;cursor:pointer}
+.line .x:disabled{opacity:.35}
+.addline{margin-top:12px;border:1.5px dashed #c9bfd6;background:#fff;color:var(--pur);border-radius:12px;min-height:46px;width:100%;font-weight:700;cursor:pointer}
+.kid .meta{font-size:13px;color:var(--mute);margin-top:6px}
+.info{border-radius:12px;padding:12px 14px;font-size:15px;background:var(--purbg);color:var(--pur);margin-top:14px}
+.info b{display:block;margin-bottom:2px}
+.info table{border-collapse:collapse;margin-top:6px;font-size:14px}.info td{padding:2px 14px 2px 0}
+.sumkid{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+.sumkid:first-of-type{border-top:0;margin-top:0;padding-top:0}
+.sumkid b{display:block;font-size:15px}
+.sumline{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:3px 0}
+.sumline span:first-child{color:var(--ink);flex:1;min-width:0;overflow-wrap:anywhere}.sumline small{display:block;color:var(--mute)}
+.sumline span:last-child{white-space:nowrap;font-weight:600;flex:none}
+.disc{color:var(--grn-d)}
+.rows{display:flex;justify-content:space-between;font-size:15px;padding:3px 0}
+.itemlist{margin:10px 0 0;padding:0;list-style:none}
+.itemlist li{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:15px}
+.itemlist li span:last-child{white-space:nowrap;font-weight:600}
+@media(max-width:600px){.line{grid-template-columns:minmax(0,1fr) 44px;grid-template-areas:"d x" "c c"}.line .fd{grid-area:d}.line .fc{grid-area:c}.line .x{grid-area:x}}
 </style>
 </head>
 <body>
 <header class="hero"><div class="in">
   <div class="logo"><img alt="Engineering For Kids" src="logo.jpg"></div>
-  <div><h1>Winter Camp EFK Indonesia 2026</h1><p>Pilih kelas, isi data anak, dan konfirmasi pembayaran.</p></div>
+  <div><h1>Winter Camp EFK Indonesia 2026</h1><p>Pilih lokasi, pilih kelas untuk setiap anak, lalu konfirmasi pembayaran.</p></div>
 </div></header>
 <div class="wrap" id="app"><div class="card single"><p class="hint" style="text-align:center"><span class="spin"></span> Memuat kelas…</p></div></div>
 
@@ -135,50 +155,61 @@ const range=(a,b)=>{const x=dd(a),y=dd(b);if(!x)return'-';if(!y||a===b)return fd
 const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const lrange=l=>l.dateLabel||range(l.start,l.end);
 const can=p=>p.viaSchool||Number(p.price)>0;
-const names=r=>r.kids.map(k=>k.kid).join(', ');
 const vKey=p=>p.area+'|'+p.venue, dKey=p=>p.start+'|'+p.end+'|'+p.dateLabel;
+const kidNames=r=>r.kids.map(k=>k.kid).join(', ');
 const toast=m=>{document.querySelectorAll('.toast').forEach(x=>x.remove());const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),3200)};
 const normWa=v=>{let d=String(v||'').replace(/\D/g,'');if(d.startsWith('62'))d=d.slice(2);if(d.startsWith('0'))d=d.slice(1);return d};
+const bundleDisc=n=>n>=4?200000:n===3?150000:n===2?75000:0;
+const mins=t=>{const m=/(\d{1,2})[.:](\d{2})/.exec(t||'');return m?(+m[1])*60+(+m[2]):null};
+const clash=(a,b)=>{if(!(a.start<=b.end&&b.start<=a.end))return false;const pa=String(a.jam).split(/[–-]/),pb=String(b.jam).split(/[–-]/);
+  const a1=mins(pa[0]),a2=mins(pa[1]),b1=mins(pb[0]),b2=mins(pb[1]);if([a1,a2,b1,b2].includes(null))return a.jam===b.jam;return a1<b2&&b1<a2};
 const MK='efkWinterCamp';
 const loadMem=()=>{try{return JSON.parse(localStorage.getItem(MK))||{}}catch(e){return{}}};
 const saveMem=m=>{try{localStorage.setItem(MK,JSON.stringify(m))}catch(e){}};
 const M0=loadMem();
-const S={pk:[],step:1,d:{pax:1,kids:[],parent:M0.parent||'',wa:M0.wa||''},reg:null,img:null,find:false,err:'',busy:false,mem:M0,remember:M0.remember!==false,opening:''};
+const newKid=k=>({kid:k?.kid||'',dob:k?.dob||'',lines:[{date:'',pkg:''}]});
+const S={pk:[],step:1,d:{venue:'',parent:M0.parent||'',wa:M0.wa||'',kids:[newKid()]},reg:null,img:null,find:false,err:'',busy:false,mem:M0,remember:M0.remember!==false,opening:''};
 const app=document.getElementById('app');
+const P=id=>S.pk.find(p=>p.id===id);
 
 function remember(reg){
   if(!S.remember)return;const m=S.mem;m.remember=true;m.parent=reg.parent;m.wa=String(reg.wa).replace(/^62/,'');m.kids=m.kids||[];
-  for(const k of reg.kids){if(!k.kid||!k.dob)continue;const i=m.kids.findIndex(x=>x.kid.toLowerCase()===k.kid.toLowerCase());if(i>=0)m.kids[i]=k;else m.kids.push(k)}
+  for(const k of reg.kids){if(!k.kid||!k.dob)continue;const i=m.kids.findIndex(x=>x.kid.toLowerCase()===k.kid.toLowerCase());if(i>=0)m.kids[i]={kid:k.kid,dob:k.dob};else m.kids.push({kid:k.kid,dob:k.dob})}
   m.regs=(m.regs||[]).filter(x=>x.code!==reg.id);
-  m.regs.unshift({code:reg.id,wa:reg.wa,kids:names(reg),tema:reg.tema,venue:reg.venue,date:lrange(reg),jam:reg.jam,total:reg.total,viaSchool:reg.viaSchool});
+  m.regs.unshift({code:reg.id,wa:reg.wa,kids:kidNames(reg),venue:reg.venue,n:reg.items.length,total:reg.total,viaSchool:reg.viaSchool});
   m.regs=m.regs.slice(0,20);saveMem(m)}
+
+/* hitung total sesuai aturan bundling (server tetap menghitung ulang) */
+function quote(){const items=[];S.d.kids.forEach((k,ki)=>k.lines.forEach(l=>{const p=P(l.pkg);if(p&&can(p))items.push({ki,kid:k.kid||'Anak '+(ki+1),p,disc:0})}));
+  const n=items.filter(i=>i.p.bundle).length,d=bundleDisc(n);items.forEach(i=>i.disc=i.p.bundle&&i.p.price>0?Math.min(d,i.p.price):0);
+  const sub=items.reduce((s,i)=>s+(i.p.price||0),0),disc=items.reduce((s,i)=>s+i.disc,0);return{items,sub,disc,total:sub-disc,n}}
 
 function render(){app.innerHTML=S.step===1?vForm():S.step===2?vPay():vDone()}
 
-function sel(){return S.pk.find(p=>p.id===S.d.pkg&&can(p))}
 function vForm(){
-  const d=S.d,P=S.pk;
-  const venues=[...new Map(P.map(p=>[vKey(p),p])).values()].sort((a,b)=>((AREAS.indexOf(a.area)+99)%99)-((AREAS.indexOf(b.area)+99)%99)||a.area.localeCompare(b.area)||a.venue.localeCompare(b.venue));
+  const d=S.d,Pk=S.pk;
+  const venues=[...new Map(Pk.map(p=>[vKey(p),p])).values()].sort((a,b)=>((AREAS.indexOf(a.area)+99)%99)-((AREAS.indexOf(b.area)+99)%99)||a.area.localeCompare(b.area)||a.venue.localeCompare(b.venue));
   const areas=[...new Set(venues.map(v=>v.area))];
-  const atVenue=P.filter(p=>vKey(p)===d.venue);
-  const dates=[...new Map([...atVenue].sort((a,b)=>a.start.localeCompare(b.start)).map(p=>[dKey(p),p])).values()];
-  const classes=atVenue.filter(p=>dKey(p)===d.date).sort((a,b)=>a.jam.localeCompare(b.jam));
-  const s=sel();
+  const atV=Pk.filter(p=>vKey(p)===d.venue);
+  const dates=[...new Map([...atV].sort((a,b)=>a.start.localeCompare(b.start)).map(p=>[dKey(p),p])).values()];
+  const v0=atV[0],school=v0&&v0.viaSchool,bundle=atV.some(p=>p.bundle);
+  const q=quote();
+  const lineHtml=(k,ki,l,li)=>{
+    const opts=atV.filter(p=>dKey(p)===l.date).sort((a,b)=>a.jam.localeCompare(b.jam));
+    const others=k.lines.filter((x,j)=>j!==li&&x.pkg).map(x=>P(x.pkg)).filter(Boolean);
+    return `<div class="line">
+     <div class="field fd"><label for="dt${ki}_${li}">Tanggal</label><select id="dt${ki}_${li}" data-f="date" data-k="${ki}" data-l="${li}" ${d.venue?'':'disabled'}><option value="">${d.venue?'Pilih…':'Pilih lokasi'}</option>${dates.map(p=>`<option value="${esc(dKey(p))}" ${dKey(p)===l.date?'selected':''}>${esc(lrange(p))}</option>`).join('')}</select></div>
+     <div class="field fc"><label for="pk${ki}_${li}">Kelas</label><select id="pk${ki}_${li}" data-f="pkg" data-k="${ki}" data-l="${li}" ${l.date?'':'disabled'}><option value="">${l.date?'Pilih kelas…':'Pilih tanggal dulu'}</option>${opts.map(p=>{
+       const dup=others.some(o=>o.id===p.id),cl=!dup&&others.some(o=>clash(o,p));const dis=!can(p)||dup||cl;
+       return `<option value="${p.id}" ${p.id===l.pkg?'selected':''} ${dis&&p.id!==l.pkg?'disabled':''}>${esc(p.tema)} · ${esc(p.jam)}${p.price>0?' · '+rp(p.price):p.viaSchool?' · harga dari sekolah':' · segera dibuka'}${dup?' (sudah dipilih)':cl?' (jadwal bentrok)':''}</option>`}).join('')}</select></div>
+     <button type="button" class="x" data-a="rmline" data-k="${ki}" data-l="${li}" aria-label="Hapus kelas ini" ${k.lines.length<2?'disabled':''}>×</button></div>`};
   return `<div class="layout">
   <form class="card form" id="f1" novalidate>
-   <section class="sec"><div class="sec-h"><span class="num">1</span><h2>Pilih kelas</h2></div>
-    <div class="grid2">
-     <div class="field"><label for="venue">Lokasi</label>
-      <select id="venue"><option value="">Pilih lokasi…</option>${areas.map(a=>`<optgroup label="${esc(a)}">${venues.filter(v=>v.area===a).map(v=>`<option value="${esc(vKey(v))}" ${vKey(v)===d.venue?'selected':''}>${esc(v.venue)}</option>`).join('')}</optgroup>`).join('')}</select></div>
-     <div class="field"><label for="date">Tanggal</label>
-      <select id="date" ${d.venue?'':'disabled'}><option value="">${d.venue?'Pilih tanggal…':'Pilih lokasi dulu'}</option>${dates.map(p=>`<option value="${esc(dKey(p))}" ${dKey(p)===d.date?'selected':''}>${esc(lrange(p))}</option>`).join('')}</select></div>
-    </div>
-    <div class="field" style="margin-top:16px"><span class="lbl">Kelas</span>
-     ${!d.date?`<div class="empty">${d.venue?'Pilih tanggal untuk melihat kelas yang tersedia.':'Pilih lokasi dan tanggal untuk melihat kelas yang tersedia.'}</div>`:
-     `<div class="opts" role="radiogroup" aria-label="Kelas">${classes.map(p=>`<button type="button" class="opt" role="radio" aria-checked="${p.id===d.pkg}" data-a="pkg" data-v="${p.id}" ${can(p)?'':'disabled'}>
-       <span class="dot"></span><span><b>${esc(p.tema)}</b><small>Jam ${esc(p.jam||'-')}</small>${p.viaSchool?'<br><span class="tag">Pendaftaran diteruskan ke sekolah</span>':''}</span>
-       <span class="pr">${p.price>0?rp(p.price):p.viaSchool?'Info harga dari sekolah':'Segera dibuka'}</span></button>`).join('')}</div>`}
-    </div>
+   <section class="sec"><div class="sec-h"><span class="num">1</span><h2>Pilih lokasi</h2></div>
+    <div class="field"><label for="venue">Lokasi</label>
+     <select id="venue"><option value="">Pilih lokasi…</option>${areas.map(a=>`<optgroup label="${esc(a)}">${venues.filter(v=>v.area===a).map(v=>`<option value="${esc(vKey(v))}" ${vKey(v)===d.venue?'selected':''}>${esc(v.venue)}</option>`).join('')}</optgroup>`).join('')}</select></div>
+    ${school?`<p class="note">Kelas di ${esc(v0.venue)} didaftarkan melalui sekolah. Setelah Anda kirim, data diteruskan ke ${esc(v0.venue)} dan pihak sekolah akan menghubungi Anda untuk pembayaran.</p>`:''}
+    ${bundle?`<div class="info"><b>Diskon bundling ${esc(v0.venue)}</b>Berlaku untuk total kelas dalam 1 pendaftaran (boleh beberapa anak):<table><tr><td>1 kelas</td><td>Rp 1.650.000</td></tr><tr><td>2 kelas</td><td>Rp 3.150.000</td></tr><tr><td>3 kelas</td><td>Rp 4.500.000</td></tr><tr><td>4 kelas atau lebih</td><td>Rp 1.450.000 / kelas</td></tr></table></div>`:''}
    </section>
    <section class="sec"><div class="sec-h"><span class="num">2</span><h2>Data orang tua</h2></div>
     <div class="grid2">
@@ -186,28 +217,35 @@ function vForm(){
      <div class="field"><label for="wa">No. WhatsApp</label><div class="wa"><span>+62</span><input type="tel" id="wa" inputmode="tel" placeholder="812 3456 7890" value="${esc(d.wa)}" autocomplete="tel-national"></div></div>
     </div>
    </section>
-   <section class="sec"><div class="sec-h"><span class="num">3</span><h2>Data anak</h2>
-     <div class="pax" aria-label="Jumlah pax"><button type="button" data-a="pax" data-v="-1" aria-label="Kurangi" ${d.pax<=1?'disabled':''}>−</button><output aria-live="polite">${d.pax} pax</output><button type="button" data-a="pax" data-v="1" aria-label="Tambah" ${d.pax>=10?'disabled':''}>+</button></div></div>
-    <p class="hint" style="margin:-6px 0 14px">1 pax = 1 anak. Tambah pax untuk mendaftarkan kakak-adik sekaligus.</p>
-    ${(S.mem.kids||[]).length?`<p class="hint" style="margin-bottom:8px">Pilih dari data tersimpan:</p><div class="chips">${S.mem.kids.map((k,i)=>`<button type="button" class="chip" data-a="savedkid" data-v="${i}" aria-pressed="${d.kids.some(x=>x&&x.kid===k.kid)}">${esc(k.kid)}</button>`).join('')}</div>`:''}
-    ${Array.from({length:d.pax},(_,i)=>{const k=d.kids[i]||{};return `<div class="kid"><h3>Anak ${i+1}${i>0?`<button type="button" class="lnk" style="min-height:0;padding:0;font-size:14px" data-a="rmkid" data-v="${i}">Hapus</button>`:''}</h3><div class="grid2">
-     <div class="field"><label for="kid${i}">Nama lengkap</label><input type="text" id="kid${i}" data-k="kid" data-i="${i}" value="${esc(k.kid)}" autocomplete="off"></div>
-     <div class="field"><label for="dob${i}">Tanggal lahir</label><input type="date" id="dob${i}" data-k="dob" data-i="${i}" value="${esc(k.dob)}" max="${iso(new Date())}"></div></div></div>`}).join('')}
+   <section class="sec"><div class="sec-h"><span class="num">3</span><h2>Anak &amp; kelas</h2>
+     <div class="pax" aria-label="Jumlah anak"><button type="button" data-a="pax" data-v="-1" aria-label="Kurangi anak" ${d.kids.length<=1?'disabled':''}>−</button><output aria-live="polite">${d.kids.length} anak</output><button type="button" data-a="pax" data-v="1" aria-label="Tambah anak" ${d.kids.length>=10?'disabled':''}>+</button></div></div>
+    <p class="hint" style="margin:-6px 0 14px">Setiap anak boleh mengambil lebih dari 1 kelas — sesi pagi &amp; siang, atau minggu yang berbeda.</p>
+    ${(S.mem.kids||[]).length?`<p class="hint" style="margin-bottom:8px">Isi dari data tersimpan:</p><div class="chips">${S.mem.kids.map((k,i)=>`<button type="button" class="chip" data-a="savedkid" data-v="${i}" aria-pressed="${d.kids.some(x=>x.kid===k.kid)}">${esc(k.kid)}</button>`).join('')}</div>`:''}
+    ${d.kids.map((k,ki)=>{const n=k.lines.filter(l=>l.pkg).length;return `<div class="kid"><h3>Anak ${ki+1}${d.kids.length>1?`<button type="button" class="lnk" style="min-height:0;padding:0;font-size:14px" data-a="rmkid" data-v="${ki}">Hapus anak</button>`:''}</h3>
+     <div class="grid2"><div class="field"><label for="kid${ki}">Nama lengkap</label><input type="text" id="kid${ki}" data-f="kid" data-k="${ki}" value="${esc(k.kid)}" autocomplete="off"></div>
+     <div class="field"><label for="dob${ki}">Tanggal lahir</label><input type="date" id="dob${ki}" data-f="dob" data-k="${ki}" value="${esc(k.dob)}" max="${iso(new Date())}"></div></div>
+     ${k.lines.map((l,li)=>lineHtml(k,ki,l,li)).join('')}
+     <button type="button" class="addline" data-a="addline" data-k="${ki}" ${d.venue?'':'disabled'}>+ Tambah kelas untuk ${esc(k.kid||'anak ini')}</button>
+     ${n>1?`<p class="meta">${n} kelas dipilih</p>`:''}</div>`}).join('')}
     <label class="check"><input type="checkbox" id="remember" ${S.remember?'checked':''}><span>Simpan data orang tua &amp; anak di perangkat ini untuk pendaftaran berikutnya</span></label>
    </section>
   </form>
   <aside class="card sum">
    <h2>Ringkasan</h2>
-   ${s?`<dl><dt>Kelas</dt><dd>${esc(s.tema)}</dd><dt>Lokasi</dt><dd>${esc(s.venue)}, ${esc(s.area)}</dd><dt>Tanggal</dt><dd>${esc(lrange(s))}</dd><dt>Jam</dt><dd>${esc(s.jam||'-')}</dd><dt>Peserta</dt><dd>${d.pax} anak</dd>${s.price>0?`<dt>Harga</dt><dd>${rp(s.price)} / anak</dd>`:''}</dl>
-   ${s.price>0?`<div class="total"><span>Total</span><b>${rp(s.price*d.pax)}</b></div>`:''}
-   ${s.viaSchool?`<p class="note">Kelas di ${esc(s.venue)} didaftarkan melalui sekolah. Setelah Anda konfirmasi, data diteruskan ke ${esc(s.venue)} dan pihak sekolah akan menghubungi Anda untuk pembayaran.</p>`:''}`
-   :`<p class="hint">Pilih lokasi, tanggal dan kelas untuk melihat ringkasan dan total biaya.</p>`}
+   ${q.items.length?`<p class="hint" style="margin:-8px 0 12px">${esc(v0?v0.venue:'')}${v0?', '+esc(v0.area):''}</p>
+   ${d.kids.map((k,ki)=>{const its=q.items.filter(i=>i.ki===ki);return its.length?`<div class="sumkid"><b>${esc(k.kid||'Anak '+(ki+1))}</b>${its.map(i=>`<div class="sumline"><span>${esc(i.p.tema)}<small>${esc(lrange(i.p))} · ${esc(i.p.jam)}</small></span><span>${i.p.price>0?rp(i.p.price):'—'}</span></div>`).join('')}</div>`:''}).join('')}
+   ${q.sub>0?`<div class="total" style="display:block"><div class="rows"><span>Subtotal (${q.items.length} kelas)</span><span>${rp(q.sub)}</span></div>
+     ${q.disc?`<div class="rows disc"><span>Diskon bundling</span><span>− ${rp(q.disc)}</span></div>`:''}
+     <div class="rows" style="margin-top:6px;align-items:baseline"><span>Total</span><b>${rp(q.total)}</b></div></div>`:''}
+   ${bundle&&q.n===1?`<p class="hint">Tambah 1 kelas lagi di ${esc(v0.venue)} untuk mendapat diskon bundling.</p>`:''}
+   ${school?`<p class="note">Pembayaran langsung ke sekolah. Pihak sekolah akan menghubungi Anda.</p>`:''}`
+   :`<p class="hint">Pilih lokasi lalu kelas untuk setiap anak untuk melihat ringkasan dan total biaya.</p>`}
    <p class="err" id="e1" role="alert">${esc(S.err)}</p>
-   <button class="btn full" type="submit" form="f1" ${S.busy?'disabled':''}>${S.busy?'<span class="spin"></span> Menyimpan…':s&&s.viaSchool?'Kirim pendaftaran':'Konfirmasi & lanjut bayar'}</button>
+   <button class="btn full" type="submit" form="f1" ${S.busy?'disabled':''}>${S.busy?'<span class="spin"></span> Menyimpan…':school?'Kirim pendaftaran':'Konfirmasi & lanjut bayar'}</button>
   </aside>
   </div>
   <div class="card more">
-   ${(S.mem.regs||[]).length?`<h3>Pendaftaran saya di perangkat ini</h3><div class="list">${S.mem.regs.map(r=>`<div><div><b>${esc(r.kids)}</b> · ${esc(r.tema)}<br><small class="hint">${esc(r.code)} · ${esc(r.venue)} · ${esc(r.date)}${r.jam?' · '+esc(r.jam):''}</small></div>
+   ${(S.mem.regs||[]).length?`<h3>Pendaftaran saya di perangkat ini</h3><div class="list">${S.mem.regs.map(r=>`<div><div><b>${esc(r.kids)}</b> · ${esc(r.venue||'')}<br><small class="hint">${esc(r.code)}${r.n?' · '+r.n+' kelas':''}${r.total?' · '+rp(r.total):''}</small></div>
     <button class="btn ghost sm" data-a="openreg" data-v="${esc(r.code)}" ${S.opening?'disabled':''}>${S.opening===r.code?'<span class="spin"></span>':''}${r.viaSchool?'Lihat status':'Lihat status / upload bukti'}</button></div>`).join('')}</div>`:''}
    ${S.find?`<h3 style="margin-top:8px">Cari pendaftaran dengan kode</h3>
     <form id="f2" novalidate><div class="grid2" style="margin-top:12px"><div class="field"><label for="fcode">Kode pendaftaran</label><input type="text" id="fcode" placeholder="EFK-XXXXXX" autocapitalize="characters"></div>
@@ -220,16 +258,17 @@ function vForm(){
 
 function steps(school){const n=school?['Data & kelas','Selesai']:['Data & kelas','Pembayaran','Selesai'];const cur=school?(S.step===1?1:2):S.step;
   return `<div class="steps">${n.map((t,i)=>`<span class="${i+1===cur?'on':i+1<cur?'done':''}">${i+1}. ${t}</span>`).join('')}</div>`}
+function itemsHtml(r){return `<ul class="itemlist">${r.items.map(i=>`<li><span><b>${esc(i.kid)}</b> — ${esc(i.tema)}<br><small class="hint">${esc(i.venue)} · ${esc(lrange(i))} · ${esc(i.jam)}</small></span><span>${i.price>0?rp(i.price):'—'}</span></li>`).join('')}</ul>`}
 
 function vPay(){
   const r=S.reg,b=r.bank;
   if(r.viaSchool)return vSchool(r);
   return `<div class="card single">${steps()}
   <div class="code"><span>Kode pendaftaran Anda</span><b>${esc(r.id)}</b><small class="hint">Simpan kode ini untuk upload bukti pembayaran nanti.</small></div>
-  <div class="receipt"><h2 style="margin-bottom:14px">Payment Confirmation</h2>
-  <p>Anda akan membayar paket untuk <b>${esc(r.program)}</b></p>
-  <p>${r.pax} pax untuk <b>${esc(names(r))}</b> pada tanggal <b>${esc(lrange(r))}</b>${r.jam?`, jam <b>${esc(r.jam)}</b>`:''}, kelas <b>${esc(r.tema)}</b> di <b>${esc(r.venue)}</b> (${esc(r.area)})</p>
-  ${r.pax>1?`<p class="hint">${r.pax} pax × ${rp(r.price)}</p>`:''}
+  <div class="receipt"><h2 style="margin-bottom:10px">Payment Confirmation</h2>
+  <p>Anda akan membayar paket Winter Camp untuk <b>${esc(kidNames(r))}</b> (${r.items.length} kelas):</p>
+  ${itemsHtml(r)}
+  ${r.discount?`<div class="rows" style="margin-top:10px"><span>Subtotal</span><span>${rp(r.subtotal)}</span></div><div class="rows disc"><span>Diskon bundling</span><span>− ${rp(r.discount)}</span></div>`:''}
   <div class="tot"><span>Total</span><span>${rp(r.total)}</span></div>
   <p>Silakan melakukan pembayaran ke</p>
   <div class="bank"><div><div style="font-weight:700">${esc(b.nama)}</div><div class="no">${esc(b.no)}</div><div>a.n. ${esc(b.an)}</div></div><button class="btn ghost sm" data-a="copyno">Salin no. rekening</button></div>
@@ -245,22 +284,15 @@ function vPay(){
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn alt" data-a="pay" ${S.img&&!S.busy?'':'disabled'}>${S.busy?'<span class="spin"></span> Mengirim…':'Konfirmasi pembayaran'}</button><button class="btn ghost" data-a="later">Bayar nanti</button></div>`}
   </div>`;
 }
-
 function vSchool(r){
   const paid=r.status==='paid',fwd=r.status==='forwarded';
   return `<div class="card single ok">${steps(true)}<div class="big">✓</div>
-  <h2>${paid?'Pendaftaran sudah lunas':'Pendaftaran terkirim'}</h2>
-  <p>Kode pendaftaran: <b>${esc(r.id)}</b></p>
-  <div class="receipt" style="text-align:left;margin-top:16px">
-   <p><b>${esc(names(r))}</b> (${r.pax} pax)</p>
-   <p>Kelas <b>${esc(r.tema)}</b> di <b>${esc(r.venue)}</b> (${esc(r.area)})<br>${esc(lrange(r))}${r.jam?' · Jam '+esc(r.jam):''}</p>
-   ${r.price>0?`<p style="margin:0">Biaya: <b>${rp(r.price)}</b> / anak</p>`:''}
-  </div>
+  <h2>${paid?'Pendaftaran sudah lunas':'Pendaftaran terkirim'}</h2><p>Kode pendaftaran: <b>${esc(r.id)}</b></p>
+  <div class="receipt" style="text-align:left;margin-top:16px">${itemsHtml(r)}</div>
   <p class="note ${paid?'g':''}" style="text-align:left">${paid?'Pembayaran Anda sudah dikonfirmasi. Sampai jumpa di Winter Camp!':
    `Pendaftaran untuk kelas ini ditangani langsung oleh <b>${esc(r.venue)}</b>. ${fwd?'Data Anda sudah kami teruskan ke sekolah.':'Tim EFK akan meneruskan data Anda ke sekolah.'} Pihak sekolah akan menghubungi Anda melalui WhatsApp untuk informasi pembayaran.`}</p>
   <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:18px"><button class="btn" data-a="new">Daftarkan anak lain</button></div></div>`;
 }
-
 function vDone(){return `<div class="card single ok">${steps()}<div class="big">✓</div><h2>Bukti pembayaran terkirim</h2>
   <p>Tim Finance EFK akan memeriksa transfer Anda dan menghubungi Anda melalui WhatsApp.</p><p>Kode pendaftaran: <b>${esc(S.reg.id)}</b></p>
   <div style="display:flex;justify-content:center;margin-top:14px"><button class="btn" data-a="new">Daftarkan anak lain</button></div></div>`}
@@ -272,13 +304,16 @@ async function compress(file){
   return out}
 
 app.addEventListener('submit',async ev=>{ev.preventDefault();
-  if(ev.target.id==='f1'){const v=k=>(document.getElementById(k)?.value||'').trim(),d=S.d;
-    d.parent=v('parent');d.wa=v('wa');d.kids=Array.from({length:d.pax},(_,i)=>({kid:v('kid'+i),dob:v('dob'+i)}));
-    const w=normWa(d.wa),ki=d.kids.findIndex(k=>!k.kid),di=d.kids.findIndex(k=>!k.dob);
-    const er=!d.venue?'Pilih lokasi.':!d.date?'Pilih tanggal.':!sel()?'Pilih kelas.':!d.parent?'Isi nama orang tua.':w.length<8||w.length>13?'Nomor WhatsApp belum valid.':ki>=0?`Isi nama anak ke-${ki+1}.`:di>=0?`Isi tanggal lahir anak ke-${di+1}.`:'';
+  if(ev.target.id==='f1'){const d=S.d,v=k=>(document.getElementById(k)?.value||'').trim();
+    d.parent=v('parent');d.wa=v('wa');d.kids.forEach((k,i)=>{k.kid=v('kid'+i);k.dob=v('dob'+i)});
+    const w=normWa(d.wa);let er=!d.venue?'Pilih lokasi.':!d.parent?'Isi nama orang tua.':w.length<8||w.length>13?'Nomor WhatsApp belum valid.':'';
+    if(!er)for(const[i,k]of d.kids.entries()){const nm=k.kid||'anak ke-'+(i+1);
+      if(!k.kid){er=`Isi nama anak ke-${i+1}.`;break}if(!k.dob){er=`Isi tanggal lahir ${nm}.`;break}
+      if(k.lines.some(l=>l.date&&!l.pkg)){er=`Pilih kelas untuk ${nm} (atau hapus baris yang kosong).`;break}
+      if(!k.lines.some(l=>l.pkg)){er=`Pilih minimal 1 kelas untuk ${nm}.`;break}}
     if(er){S.err=er;render();return}
     S.busy=true;S.err='';render();
-    try{S.reg=await run('register',{parent:d.parent,wa:d.wa,pkgId:d.pkg,kids:d.kids});remember(S.reg);S.step=2;S.img=null}catch(e){S.err=String(e)}
+    try{S.reg=await run('register',{parent:d.parent,wa:d.wa,kids:d.kids.map(k=>({kid:k.kid,dob:k.dob,pkgIds:k.lines.filter(l=>l.pkg).map(l=>l.pkg)}))});remember(S.reg);S.step=2;S.img=null}catch(e){S.err=String(e)}
     S.busy=false;render();scrollTo(0,0)}
   if(ev.target.id==='f2'){const code=document.getElementById('fcode').value.trim().toUpperCase(),wa=document.getElementById('fwa').value;
     if(!code||!normWa(wa)){document.getElementById('e3').textContent='Isi kode dan nomor WhatsApp.';return}
@@ -286,28 +321,32 @@ app.addEventListener('submit',async ev=>{ev.preventDefault();
     try{S.reg=await run('findRegistration',code,wa);remember(S.reg);S.step=2;S.img=null;S.find=false;render();scrollTo(0,0)}catch(e){b.disabled=false;b.textContent='Cari';document.getElementById('e3').textContent=e}}
 });
 app.addEventListener('input',ev=>{const t=ev.target,d=S.d;
-  if(t.dataset.k){const i=+t.dataset.i;d.kids[i]={...(d.kids[i]||{}),[t.dataset.k]:t.value}}
+  if(t.dataset.f==='kid'||t.dataset.f==='dob'){d.kids[+t.dataset.k][t.dataset.f]=t.value;if(t.dataset.f==='kid'){const b=t.closest('.kid').querySelector('.addline');if(b)b.textContent='+ Tambah kelas untuk '+(t.value||'anak ini')}}
   else if(t.id==='parent'||t.id==='wa')d[t.id]=t.value});
 app.addEventListener('change',async ev=>{const t=ev.target,d=S.d;
-  if(t.id==='venue'){d.venue=t.value;d.date='';d.pkg='';const ds=[...new Set(S.pk.filter(p=>vKey(p)===d.venue).map(dKey))];if(ds.length===1)d.date=ds[0];autoPick();render()}
-  if(t.id==='date'){d.date=t.value;d.pkg='';autoPick();render()}
+  if(t.id==='venue'){d.venue=t.value;d.kids.forEach(k=>{k.lines=[{date:'',pkg:''}]});const ds=[...new Set(S.pk.filter(p=>vKey(p)===d.venue).map(dKey))];if(ds.length===1)d.kids.forEach(k=>k.lines[0].date=ds[0]);d.kids.forEach(k=>autoPick(k,0));S.err='';render()}
+  if(t.dataset.f==='date'){const k=d.kids[+t.dataset.k],l=k.lines[+t.dataset.l];l.date=t.value;l.pkg='';autoPick(k,+t.dataset.l);S.err='';render()}
+  if(t.dataset.f==='pkg'){d.kids[+t.dataset.k].lines[+t.dataset.l].pkg=t.value;S.err='';render()}
   if(t.id==='remember'){S.remember=t.checked;if(!t.checked){S.mem={remember:false};saveMem(S.mem)}else{S.mem.remember=true;saveMem(S.mem)}render()}
   if(t.id==='proof'&&t.files[0]){const f=t.files[0];if(!f.type.startsWith('image/')){document.getElementById('e2').textContent='File harus berupa gambar.';return}
     try{S.img=await compress(f);render()}catch(e){document.getElementById('e2').textContent='Gambar tidak bisa dibaca, coba file lain.'}}});
-function autoPick(){const d=S.d,c=S.pk.filter(p=>vKey(p)===d.venue&&dKey(p)===d.date&&can(p));if(c.length===1)d.pkg=c[0].id}
+function autoPick(k,li){const l=k.lines[li];if(!l.date)return;const others=k.lines.filter((x,j)=>j!==li&&x.pkg).map(x=>P(x.pkg));
+  const c=S.pk.filter(p=>vKey(p)===S.d.venue&&dKey(p)===l.date&&can(p)&&!others.some(o=>o.id===p.id||clash(o,p)));if(c.length===1)l.pkg=c[0].id}
 app.addEventListener('click',async ev=>{const b=ev.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,d=S.d;
-  if(a==='pkg'){d.pkg=b.dataset.v;S.err='';render()}
-  if(a==='pax'){d.pax=Math.max(1,Math.min(10,d.pax+Number(b.dataset.v)));render()}
-  if(a==='rmkid'){d.kids.splice(+b.dataset.v,1);d.pax=Math.max(1,d.pax-1);render()}
-  if(a==='savedkid'){const k=S.mem.kids[+b.dataset.v],i=d.kids.findIndex(x=>x&&x.kid===k.kid);
-    if(i>=0){d.kids.splice(i,1);d.pax=Math.max(1,d.pax-1)}else{let e=-1;for(let j=0;j<d.pax;j++)if(!d.kids[j]||!d.kids[j].kid){e=j;break}if(e<0){if(d.pax>=10)return;e=d.pax;d.pax++}d.kids[e]={...k}}render()}
+  if(a==='pax'){if(+b.dataset.v>0){const k=newKid();d.kids.push(k);if(d.kids[0].lines[0].date){k.lines[0].date=d.kids[0].lines[0].date;autoPick(k,0)}}else d.kids.pop();render()}
+  if(a==='rmkid'){d.kids.splice(+b.dataset.v,1);if(!d.kids.length)d.kids.push(newKid());render()}
+  if(a==='addline'){const k=d.kids[+b.dataset.k];k.lines.push({date:'',pkg:''});render();const s=document.getElementById(`dt${b.dataset.k}_${k.lines.length-1}`);if(s)s.focus()}
+  if(a==='rmline'){const k=d.kids[+b.dataset.k];k.lines.splice(+b.dataset.l,1);if(!k.lines.length)k.lines.push({date:'',pkg:''});render()}
+  if(a==='savedkid'){const m=S.mem.kids[+b.dataset.v],i=d.kids.findIndex(x=>x.kid===m.kid);
+    if(i>=0){if(d.kids.length>1)d.kids.splice(i,1);else Object.assign(d.kids[0],{kid:'',dob:''})}
+    else{let e=d.kids.findIndex(x=>!x.kid);if(e<0){if(d.kids.length>=10)return;d.kids.push(newKid());e=d.kids.length-1}Object.assign(d.kids[e],{kid:m.kid,dob:m.dob})}render()}
   if(a==='find'){S.find=!S.find;render();if(S.find)document.getElementById('fcode').focus()}
   if(a==='openreg'){const r=S.mem.regs.find(x=>x.code===b.dataset.v);S.opening=r.code;render();
     try{S.reg=await run('findRegistration',r.code,r.wa);S.step=2;S.img=null;S.opening='';render();scrollTo(0,0)}catch(e){S.opening='';render();toast(String(e))}}
-  if(a==='forget'){S.mem={remember:S.remember};saveMem(S.mem);S.d={pax:1,kids:[]};render();toast('Data tersimpan sudah dihapus')}
+  if(a==='forget'){S.mem={remember:S.remember};saveMem(S.mem);S.d={venue:d.venue,parent:'',wa:'',kids:[newKid()]};render();toast('Data tersimpan sudah dihapus')}
   if(a==='copyno'){try{await navigator.clipboard.writeText(S.reg.bank.no.replace(/-/g,''));toast('Nomor rekening disalin')}catch(e){toast('Salin manual: '+S.reg.bank.no)}}
-  if(a==='later'){S.step=1;S.d={pax:1,kids:[],parent:S.mem.parent||'',wa:S.mem.wa||''};S.img=null;render();scrollTo(0,0);toast('Tersimpan. Kode '+S.reg.id+' bisa dipakai untuk upload bukti nanti.')}
-  if(a==='new'){S.step=1;S.d={parent:S.d.parent,wa:S.d.wa,pax:1,kids:[]};S.img=null;render();scrollTo(0,0)}
+  if(a==='later'){S.step=1;S.d={venue:'',kids:[newKid()],parent:S.mem.parent||'',wa:S.mem.wa||''};S.img=null;render();scrollTo(0,0);toast('Tersimpan. Kode '+S.reg.id+' bisa dipakai untuk upload bukti nanti.')}
+  if(a==='new'){S.step=1;S.d={venue:'',parent:S.d.parent,wa:S.d.wa,kids:[newKid()]};S.img=null;render();scrollTo(0,0)}
   if(a==='pay'){S.busy=true;render();
     try{await run('uploadProof',S.reg.id,S.reg.wa,S.img);S.step=3;S.img=null;S.busy=false;render();scrollTo(0,0)}
     catch(e){S.busy=false;render();document.getElementById('e2').textContent=e}}
